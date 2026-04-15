@@ -1,27 +1,15 @@
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 import pickle
 
 # 1. Загружаем данные
 df = pd.read_csv('loan_data.csv')
-
-# Очистка: убираем лишние пробелы в названиях колонок
 df.columns = df.columns.str.strip()
 
-# Очистка: убираем лишние пробелы в текстовых колонках
-for col in df.select_dtypes(include=['object', 'string']).columns:
-    df[col] = df[col].str.strip()
-
 print("Данные загружены. Формат:", df.shape)
-print("Колонки:", list(df.columns))
 
-# Проверяем уникальные значения в текстовых колонках
-print("\n--- Уникальные значения в колонках ---")
-print("education:", df['education'].unique())
-print("self_employed:", df['self_employed'].unique())
-print("loan_status:", df['loan_status'].unique())
-
-# 2. Выбираем признаки (X) и целевую переменную (y)
+# 2. Выбираем признаки и целевую переменную
 features = ['no_of_dependents', 'education', 'self_employed', 'income_annum',
             'loan_amount', 'loan_term', 'cibil_score', 'residential_assets_value',
             'commercial_assets_value', 'luxury_assets_value', 'bank_asset_value']
@@ -29,55 +17,36 @@ features = ['no_of_dependents', 'education', 'self_employed', 'income_annum',
 X = df[features].copy()
 y = df['loan_status'].copy()
 
-print("\nПризнаки:", features)
-
-# 3. Кодируем текстовые данные в числа
-print("\n--- Кодирование признаков ---")
-
-# Кодируем education
-print("До кодирования education:", X['education'].value_counts().to_dict())
+# 3. Кодируем текстовые данные
 X['education'] = X['education'].map({'Graduate': 1, 'Not Graduate': 0})
-print("После кодирования education:", X['education'].value_counts().to_dict())
-
-# Кодируем self_employed
-print("\nДо кодирования self_employed:", X['self_employed'].value_counts().to_dict())
 X['self_employed'] = X['self_employed'].map({'Yes': 1, 'No': 0})
-print("После кодирования self_employed:", X['self_employed'].value_counts().to_dict())
-
-# Проверяем, сколько NaN появилось
-print(f"\nNaN в education после кодирования: {X['education'].isna().sum()}")
-print(f"NaN в self_employed после кодирования: {X['self_employed'].isna().sum()}")
-
-# Заполняем NaN нулями (на случай, если есть другие значения)
-X['education'] = X['education'].fillna(0)
-X['self_employed'] = X['self_employed'].fillna(0)
-
-# 4. Кодируем целевую переменную
-print("\nДо кодирования loan_status:", y.value_counts().to_dict())
 y = y.map({'Approved': 1, 'Rejected': 0})
-print("После кодирования loan_status:", y.value_counts().to_dict())
 
-# Заполняем NaN нулями и удаляем строки с NaN
+# Заполняем возможные пустые значения
+X = X.fillna(0)
 y = y.fillna(0)
 
-# 5. Финальная проверка
-print(f"\nИтоговый размер данных: {len(X)} строк")
-print(f"NaN в X: {X.isnull().sum().sum()}")
-print(f"NaN в y: {y.isnull().sum()}")
+print(f"Размер данных: {len(X)} строк")
 
-# Удаляем строки с NaN (если остались)
-mask = ~(X.isnull().any(axis=1) | y.isnull())
-X = X[mask]
-y = y[mask]
+# 4. Разделяем на обучающую (80%) и тестовую (20%) выборки
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
 
-print(f"Размер после удаления NaN: {len(X)} строк")
+print(f"Обучающая выборка: {len(X_train)} строк")
+print(f"Тестовая выборка: {len(X_test)} строк")
 
-# 6. Обучаем модель
+# 5. Обучаем модель
 model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X, y)
+model.fit(X_train, y_train)
+
+# 6. Оцениваем качество
+train_score = model.score(X_train, y_train)
+test_score = model.score(X_test, y_test)
 
 print(f"\nМодель обучена!")
-print(f"Точность на обучающих данных: {model.score(X, y):.3f}")
+print(f"Точность на обучающих данных: {train_score:.3f}")
+print(f"Точность на ТЕСТОВЫХ данных: {test_score:.3f}")
 
 # 7. Сохраняем модель
 with open('loan_model.pkl', 'wb') as f:
@@ -89,21 +58,3 @@ with open('loan_model.pkl', 'wb') as f:
     }, f)
 
 print("\nМодель сохранена в файл 'loan_model.pkl'")
-
-# 8. Тест предсказания
-print("\n--- Тест предсказания ---")
-sample = X.iloc[0:1]
-pred = model.predict(sample)
-prob = model.predict_proba(sample)
-print(f"Первая строка данных:")
-print(f"  Предсказание: {'Approved' if pred[0] == 1 else 'Rejected'}")
-print(f"  Вероятность Rejected: {prob[0][0]:.3f}")
-print(f"  Вероятность Approved: {prob[0][1]:.3f}")
-
-# 9. Важность признаков
-print("\n--- Важность признаков ---")
-importance = pd.DataFrame({
-    'Признак': features,
-    'Важность': model.feature_importances_
-}).sort_values('Важность', ascending=False)
-print(importance.to_string(index=False))
